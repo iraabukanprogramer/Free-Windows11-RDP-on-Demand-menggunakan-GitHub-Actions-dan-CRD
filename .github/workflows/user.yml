@@ -1,0 +1,53 @@
+name: CI
+
+on: [push, workflow_dispatch]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Create Local User for RDP/CRD
+        shell: pwsh
+        run: |
+          $username = "crduser"
+          $password = "P@ssw0rd!"
+          if (-not (Get-LocalUser -Name $username -ErrorAction SilentlyContinue)) {
+            New-LocalUser -Name $username -Password (ConvertTo-SecureString $password -AsPlainText -Force) -Description "User for Chrome Remote Desktop"
+            Add-LocalGroupMember -Group "Administrators" -Member $username
+            Write-Host "User $username created and added to Administrators."
+          } else {
+            Write-Host "User $username already exists."
+          }
+
+      - name: Enable Remote Desktop Services
+        shell: pwsh
+        run: |
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
+
+      - name: Install Google Chrome
+        shell: pwsh
+        run: |
+          Invoke-WebRequest "https://dl.google.com/chrome/install/latest/chrome_installer.exe" -OutFile "chrome_installer.exe"
+          Start-Process "chrome_installer.exe" -ArgumentList "/silent /install" -Wait
+
+      - name: Install Chrome Remote Desktop Host
+        shell: pwsh
+        run: |
+          Invoke-WebRequest "https://dl.google.com/linux/direct/chrome-remote-desktop_current_x64.msi" -OutFile "CRD.msi"
+          Start-Process msiexec.exe -ArgumentList "/i CRD.msi /quiet" -Wait
+
+      - name: Start Chrome Remote Desktop Service
+        shell: pwsh
+        run: |
+          Start-Service "chromoting"
+          Set-Service -Name "chromoting" -StartupType Automatic
+          Write-Host "Chrome Remote Desktop service started."
+
+      - name: Reminder: Setup PIN and login manually
+        shell: pwsh
+        run: |
+          Write-Host "⚠️ Chrome Remote Desktop requires manual login with Google account and PIN setup."
+          Write-Host "Use the user 'crduser' to login via https://remotedesktop.google.com/access to complete the setup."
